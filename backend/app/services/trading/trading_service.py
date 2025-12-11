@@ -159,9 +159,22 @@ class TradingService:
         commission = max(amount * self.commission_rate, self.min_commission)
         total_cost = amount + commission
         
-        # 检查资金是否充足
+        # 如果资金不足，自动调整买入数量
         if portfolio.current_capital < total_cost:
-            raise ValueError(f"资金不足: 需要 {total_cost:.2f}, 可用 {portfolio.current_capital:.2f}")
+            # 计算可以买入的最大数量（100股的整数倍）
+            max_affordable = (portfolio.current_capital - self.min_commission) / (price * (1 + self.commission_rate))
+            adjusted_quantity = int(max_affordable / 100) * 100
+            
+            if adjusted_quantity <= 0:
+                raise ValueError(f"资金不足: 需要至少 {price * 100 * (1 + self.commission_rate):.2f}, 可用 {portfolio.current_capital:.2f}")
+            
+            logger.warning(f"资金不足，调整买入数量: {order.quantity} -> {adjusted_quantity}")
+            order.quantity = adjusted_quantity
+            
+            # 重新计算成本
+            amount = price * order.quantity
+            commission = max(amount * self.commission_rate, self.min_commission)
+            total_cost = amount + commission
         
         # 检查持仓比例限制
         max_position_value = portfolio.total_value * settings.max_position_ratio

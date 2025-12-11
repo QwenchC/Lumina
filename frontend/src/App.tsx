@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
+import MarketBrowser from './pages/MarketBrowser'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import { useWebSocket } from './hooks/useWebSocket'
@@ -35,6 +36,7 @@ function App() {
                   />
                 } 
               />
+              <Route path="/market" element={<MarketBrowser />} />
             </Routes>
           </main>
         </div>

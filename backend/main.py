@@ -13,7 +13,7 @@ from loguru import logger
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.core.config import settings
+from app.core.config import settings, check_api_key_interactive
 from app.core.database import init_db
 from app.api import portfolio_router, market_router, websocket_router
 from app.api.websocket import broadcast_loop
@@ -22,6 +22,7 @@ from app.services.strategy import strategy_scheduler
 
 # 配置日志
 os.makedirs("./logs", exist_ok=True)
+os.makedirs("./data", exist_ok=True)
 logger.add(
     settings.log_file,
     rotation="10 MB",
@@ -30,10 +31,15 @@ logger.add(
     encoding="utf-8"
 )
 
+# 全局标记：LLM 是否可用
+llm_available = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    global llm_available
+    
     # 启动时
     logger.info("=" * 50)
     logger.info(f"🚀 {settings.app_name} v{settings.app_version} 启动中...")
@@ -43,10 +49,23 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ 数据库初始化完成")
     
+    # 检查 LLM 密钥状态
+    api_key = settings.get_llm_api_key()
+    if api_key and api_key not in ["your_deepseek_api_key", "your_openai_api_key", 
+                                     "your_github_personal_access_token"]:
+        llm_available = True
+        logger.info(f"✅ LLM 已配置 (提供商: {settings.llm_provider})")
+    else:
+        llm_available = False
+        logger.warning(f"⚠️ LLM 未配置，自动选股功能将不可用")
+    
     # 初始化调度器
     await strategy_scheduler.init()
-    strategy_scheduler.start()
-    logger.info("✅ 策略调度器启动完成")
+    if llm_available:
+        strategy_scheduler.start()
+        logger.info("✅ 策略调度器启动完成")
+    else:
+        logger.info("⏸️ 策略调度器暂停（等待 LLM 配置）")
     
     # 启动广播任务
     broadcast_task = asyncio.create_task(broadcast_loop())
@@ -56,6 +75,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"🎉 {settings.app_name} 启动成功!")
     logger.info(f"📊 API 文档: http://{settings.backend_host}:{settings.backend_port}/docs")
     logger.info(f"🔗 WebSocket: ws://{settings.backend_host}:{settings.backend_port}/ws")
+    if not llm_available:
+        logger.info(f"💡 设置环境变量或重启配置 LLM 密钥以启用自动选股")
     logger.info("=" * 50)
     
     yield
@@ -110,6 +131,8 @@ async def health():
     """健康检查"""
     return {
         "status": "healthy",
+        "llm_available": llm_available,
+        "llm_provider": settings.llm_provider if llm_available else None,
         "scheduler_running": strategy_scheduler.is_running,
         "last_analysis": strategy_scheduler.last_analysis_time
     }
@@ -117,6 +140,13 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # 交互式检查 API 密钥
+    print("\n" + "=" * 60)
+    print(f"  🌟 {settings.app_name} v{settings.app_version}")
+    print("=" * 60)
+    
+    check_api_key_interactive()
     
     uvicorn.run(
         "main:app",

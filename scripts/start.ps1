@@ -18,12 +18,29 @@ if (-not (Test-Path $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir | Out-Null
 }
 
-# 检查 .env 文件
-$EnvFile = Join-Path $ProjectDir ".env"
-$EnvExample = Join-Path $ProjectDir ".env.example"
-if (-not (Test-Path $EnvFile)) {
-    Copy-Item $EnvExample $EnvFile
-    Write-Host "请编辑 .env 文件配置 API 密钥" -ForegroundColor Yellow
+# 加载用户级环境变量中的 API 密钥
+Write-Host "`n检查 LLM API 密钥..." -ForegroundColor Yellow
+$env:DEEPSEEK_API_KEY = [System.Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
+$env:GITHUB_TOKEN = [System.Environment]::GetEnvironmentVariable("GITHUB_TOKEN", "User")
+$env:OPENAI_API_KEY = [System.Environment]::GetEnvironmentVariable("OPENAI_API_KEY", "User")
+
+$hasKey = $false
+if ($env:DEEPSEEK_API_KEY) { 
+    Write-Host "  ✅ 已加载 DEEPSEEK_API_KEY" -ForegroundColor Green
+    $hasKey = $true
+}
+if ($env:GITHUB_TOKEN) { 
+    Write-Host "  ✅ 已加载 GITHUB_TOKEN" -ForegroundColor Green
+    $hasKey = $true
+}
+if ($env:OPENAI_API_KEY) { 
+    Write-Host "  ✅ 已加载 OPENAI_API_KEY" -ForegroundColor Green
+    $hasKey = $true
+}
+
+if (-not $hasKey) {
+    Write-Host "  ⚠️ 未检测到 API 密钥，自动选股功能将不可用" -ForegroundColor Yellow
+    Write-Host "  💡 请设置系统环境变量: DEEPSEEK_API_KEY" -ForegroundColor Gray
 }
 
 # 启动后端
@@ -41,8 +58,13 @@ if (-not (Test-Path $VenvDir)) {
     & "$VenvDir\Scripts\Activate.ps1"
 }
 
-# 启动后端 (新窗口)
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$BackendDir'; .\venv\Scripts\Activate.ps1; python main.py" -WindowStyle Normal
+# 启动后端 (新窗口，传递环境变量)
+$envVars = ""
+if ($env:DEEPSEEK_API_KEY) { $envVars += "`$env:DEEPSEEK_API_KEY='$($env:DEEPSEEK_API_KEY)'; " }
+if ($env:GITHUB_TOKEN) { $envVars += "`$env:GITHUB_TOKEN='$($env:GITHUB_TOKEN)'; " }
+if ($env:OPENAI_API_KEY) { $envVars += "`$env:OPENAI_API_KEY='$($env:OPENAI_API_KEY)'; " }
+
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "$envVars cd '$BackendDir'; .\venv\Scripts\Activate.ps1; python main.py" -WindowStyle Normal
 
 Write-Host "后端服务已启动"
 

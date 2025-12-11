@@ -54,14 +54,14 @@ class GitHubModelsClient(LLMClient):
     def __init__(self, model: str = "openai/gpt-4.1-mini"):
         super().__init__(model)
         self.endpoint = settings.github_models_endpoint
-        self.token = settings.github_token
     
     async def chat(self, messages: List[Dict], **kwargs) -> Dict:
-        if not self.token:
-            raise ValueError("GitHub Token 未配置")
+        token = settings.get_llm_api_key()
+        if not token:
+            raise ValueError("GitHub Token 未配置，请设置环境变量 GITHUB_TOKEN")
         
         headers = {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
         
@@ -83,19 +83,20 @@ class GitHubModelsClient(LLMClient):
 
 
 class OpenAIClient(LLMClient):
-    """OpenAI 客户端"""
+    """OpenAI / DeepSeek 兼容客户端"""
     
-    def __init__(self, model: str = "gpt-4o"):
+    def __init__(self, model: str = "gpt-4o", base_url: str = None):
         super().__init__(model)
-        self.api_key = settings.openai_api_key
-        self.base_url = settings.openai_base_url
+        self.base_url = base_url or settings.openai_base_url
     
     async def chat(self, messages: List[Dict], **kwargs) -> Dict:
-        if not self.api_key:
-            raise ValueError("OpenAI API Key 未配置")
+        api_key = settings.get_llm_api_key()
+        if not api_key:
+            provider = settings.llm_provider.upper()
+            raise ValueError(f"{provider} API Key 未配置，请设置对应的环境变量")
         
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         
@@ -170,17 +171,24 @@ class LLMDecisionEngine:
         self.client = self._create_client()
     
     def _create_client(self) -> LLMClient:
-        """创建 LLM 客户端"""
-        if self.model.startswith("openai/") or self.model.startswith("meta/") or \
-           self.model.startswith("deepseek/") or self.model.startswith("microsoft/") or \
-           self.model.startswith("xai/"):
+        """根据配置创建 LLM 客户端"""
+        provider = settings.llm_provider.lower()
+        
+        if provider == "github":
             # GitHub Models
             return GitHubModelsClient(self.model)
-        elif settings.openai_api_key:
-            return OpenAIClient(self.model)
+        elif provider == "deepseek":
+            # DeepSeek API
+            return OpenAIClient(self.model, settings.deepseek_base_url)
+        elif provider == "openai":
+            # OpenAI API
+            return OpenAIClient(self.model, settings.openai_base_url)
+        elif provider == "azure":
+            # Azure OpenAI (使用 OpenAI 兼容客户端)
+            return OpenAIClient(self.model, settings.azure_openai_endpoint)
         else:
-            # 默认使用 GitHub Models
-            return GitHubModelsClient(self.model)
+            # 默认使用 DeepSeek
+            return OpenAIClient(self.model, settings.deepseek_base_url)
     
     def _build_analysis_prompt(
         self,
@@ -246,7 +254,13 @@ class LLMDecisionEngine:
 - 止损线: {settings.stop_loss_ratio * 100}%
 - 止盈线: {settings.take_profit_ratio * 100}%
 
-请根据以上信息，给出你的分析和交易建议。
+## ⚠️ 重要资金约束
+- 当前可用资金: ¥{portfolio.get('cash', 0):,.2f}
+- 所有买入建议的总金额（quantity × 当前价格）必须小于可用资金
+- 每次建议买入的金额不要超过可用资金的 {settings.max_position_ratio * 100}%
+- 如果资金不足，请减少买入数量或不建议买入
+
+请根据以上信息，给出你的分析和交易建议。注意必须确保建议的买入总金额在可用资金范围内。
 """
         return prompt
     

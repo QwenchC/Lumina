@@ -9,6 +9,7 @@ __pycache__/
 env/
 venv/
 ENV/
+.conda/
 
 # Node.js
 node_modules/

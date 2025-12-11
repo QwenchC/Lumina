@@ -138,24 +138,87 @@ async def get_hot_stocks(limit: int = 20):
 
 @router.get("/screen")
 async def screen_stocks(
-    min_price: float = 5,
-    max_price: float = 100,
-    min_market_cap: float = 5e9,
-    min_turnover: float = 1,
-    exclude_st: bool = True
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    min_market_cap: Optional[float] = None,
+    max_market_cap: Optional[float] = None,
+    min_pe: Optional[float] = None,
+    max_pe: Optional[float] = None,
+    min_turnover: Optional[float] = None,
+    max_turnover: Optional[float] = None,
+    min_change_pct: Optional[float] = None,
+    max_change_pct: Optional[float] = None,
+    limit: int = 100
 ):
     """股票筛选"""
     df = await data_service.screen_stocks(
         min_price=min_price,
         max_price=max_price,
         min_market_cap=min_market_cap,
+        max_market_cap=max_market_cap,
+        min_pe=min_pe,
+        max_pe=max_pe,
         min_turnover=min_turnover,
-        exclude_st=exclude_st
+        max_turnover=max_turnover,
+        min_change_pct=min_change_pct,
+        max_change_pct=max_change_pct
     )
     
     if df.empty:
         return []
     
+    return df.head(limit).to_dict("records")
+
+
+@router.get("/indices")
+async def get_indices():
+    """获取主要指数行情"""
+    indices = await data_service.get_index_quote()
+    return indices
+
+
+@router.get("/gainers")
+async def get_gainers(limit: int = 50):
+    """获取涨幅榜"""
+    df = await data_service.get_gainers(limit)
+    if df.empty:
+        return []
+    return df.to_dict("records")
+
+
+@router.get("/losers")
+async def get_losers(limit: int = 50):
+    """获取跌幅榜"""
+    df = await data_service.get_losers(limit)
+    if df.empty:
+        return []
+    return df.to_dict("records")
+
+
+@router.get("/volume-leaders")
+async def get_volume_leaders(limit: int = 50):
+    """获取成交量排行"""
+    df = await data_service.get_volume_leaders(limit)
+    if df.empty:
+        return []
+    return df.to_dict("records")
+
+
+@router.get("/turnover-leaders")
+async def get_turnover_leaders(limit: int = 50):
+    """获取换手率排行"""
+    df = await data_service.get_turnover_leaders(limit)
+    if df.empty:
+        return []
+    return df.to_dict("records")
+
+
+@router.get("/all")
+async def get_all_stocks():
+    """获取全市场股票行情"""
+    df = await data_service.get_all_stocks_quote()
+    if df.empty:
+        return []
     return df.to_dict("records")
 
 

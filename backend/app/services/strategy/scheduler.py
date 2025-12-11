@@ -220,8 +220,21 @@ class StrategyScheduler:
     async def _get_market_data(self) -> dict:
         """获取市场数据"""
         try:
-            # 获取上证指数
-            index_data = await data_service.get_index_data("000001")
+            # 优先使用新浪实时指数（更稳定）
+            indices = await data_service.get_index_quote()
+            if indices and "s_sh000001" in indices:
+                sh_data = indices["s_sh000001"]
+                return {
+                    "sh_index": sh_data["price"],
+                    "sh_change": round(sh_data["change_pct"], 2),
+                    "sentiment": "bullish" if sh_data["change_pct"] > 0.5 else ("bearish" if sh_data["change_pct"] < -0.5 else "neutral")
+                }
+        except Exception as e:
+            logger.warning(f"获取实时指数失败: {e}")
+        
+        # 备选：尝试获取指数日线
+        try:
+            index_data = await data_service.get_index_daily("000001")
             
             if not index_data.empty:
                 latest = index_data.iloc[-1]
@@ -234,14 +247,14 @@ class StrategyScheduler:
                     "sentiment": "bullish" if change > 0.5 else ("bearish" if change < -0.5 else "neutral")
                 }
         except Exception as e:
-            logger.warning(f"获取市场数据失败: {e}")
+            logger.warning(f"获取指数日线失败: {e}")
         
         return {
             "sh_index": "N/A",
             "sh_change": "N/A",
             "sentiment": "unknown"
         }
-    
+
     async def _get_candidates(self) -> list:
         """获取候选股票"""
         try:
@@ -253,12 +266,6 @@ class StrategyScheduler:
             
             candidates = []
             for _, row in hot_stocks.iterrows():
-                # 获取历史数据和技术指标
-                hist = await data_service.get_historical_data(
-                    row["symbol"],
-                    period="daily"
-                )
-                
                 stock_info = {
                     "symbol": row["symbol"],
                     "name": row.get("name", ""),
@@ -270,14 +277,29 @@ class StrategyScheduler:
                     "market_cap": row.get("market_cap", 0)
                 }
                 
-                # 添加技术指标
-                if not hist.empty:
-                    latest = hist.iloc[-1]
+                # 尝试获取历史数据和技术指标（失败不影响主流程）
+                try:
+                    hist = await data_service.get_historical_data(
+                        row["symbol"],
+                        period="daily"
+                    )
+                    
+                    # 添加技术指标
+                    if not hist.empty:
+                        latest = hist.iloc[-1]
+                        stock_info.update({
+                            "ma5": latest.get("ma5"),
+                            "ma20": latest.get("ma20"),
+                            "rsi": latest.get("rsi"),
+                            "macd": latest.get("macd")
+                        })
+                except Exception:
+                    # 历史数据获取失败，使用 N/A
                     stock_info.update({
-                        "ma5": latest.get("ma5"),
-                        "ma20": latest.get("ma20"),
-                        "rsi": latest.get("rsi"),
-                        "macd": latest.get("macd")
+                        "ma5": "N/A",
+                        "ma20": "N/A", 
+                        "rsi": "N/A",
+                        "macd": "N/A"
                     })
                 
                 candidates.append(stock_info)

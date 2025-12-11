@@ -6,7 +6,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Bot
+  Bot,
+  TrendingUp
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -17,6 +18,7 @@ interface SidebarProps {
 
 const menuItems = [
   { icon: LayoutDashboard, label: '仪表盘', path: '/' },
+  { icon: TrendingUp, label: '市场行情', path: '/market' },
   { icon: Briefcase, label: '持仓管理', path: '/positions' },
   { icon: LineChart, label: '盈亏分析', path: '/analysis' },
   { icon: History, label: '交易历史', path: '/history' },
