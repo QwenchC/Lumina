@@ -85,6 +85,17 @@ async def get_quotes(symbols: str = Query(..., description="股票代码，逗�
     return quotes.to_dict("records")
 
 
+@router.get("/minute/{symbol}")
+async def get_minute_data(symbol: str):
+    """获取当天分时数据"""
+    df = await data_service.get_minute_data(symbol)
+    
+    if df.empty:
+        return []
+    
+    return df.to_dict("records")
+
+
 @router.get("/history/{symbol}", response_model=List[HistoricalData])
 async def get_history(
     symbol: str,
@@ -238,3 +249,47 @@ async def search_stocks(keyword: str):
     
     result = stocks[mask].head(20)
     return result.to_dict("records")
+
+
+# ========== K线数据管理 ==========
+
+@router.get("/kline/stats")
+async def get_kline_stats():
+    """获取K线数据库统计"""
+    from app.services.data.kline_storage import kline_storage
+    
+    daily_stocks = await kline_storage.get_stock_count("daily")
+    daily_records = await kline_storage.get_record_count(period="daily")
+    weekly_stocks = await kline_storage.get_stock_count("weekly")
+    weekly_records = await kline_storage.get_record_count(period="weekly")
+    monthly_stocks = await kline_storage.get_stock_count("monthly")
+    monthly_records = await kline_storage.get_record_count(period="monthly")
+    
+    return {
+        "daily": {"stocks": daily_stocks, "records": daily_records},
+        "weekly": {"stocks": weekly_stocks, "records": weekly_records},
+        "monthly": {"stocks": monthly_stocks, "records": monthly_records},
+        "total_records": daily_records + weekly_records + monthly_records
+    }
+
+
+@router.post("/kline/update")
+async def update_kline_data(
+    symbols: Optional[str] = None,
+    period: str = "daily"
+):
+    """
+    手动更新K线数据到数据库
+    
+    Args:
+        symbols: 股票代码，逗号分隔，为空则更新热门股票
+        period: daily / weekly / monthly
+    """
+    from app.services.strategy.scheduler import strategy_scheduler
+    
+    symbol_list = None
+    if symbols:
+        symbol_list = [s.strip() for s in symbols.split(",")]
+    
+    result = await strategy_scheduler.manual_update_kline(symbol_list, period)
+    return result

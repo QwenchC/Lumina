@@ -2,10 +2,14 @@
 Lumina 明见量化 - 核心配置
 """
 import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
 from functools import lru_cache
+
+# 获取项目根目录（backend 目录）
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -72,7 +76,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     
     class Config:
-        env_file = ".env"
+        env_file = str(BASE_DIR / ".env")  # 使用绝对路径
         env_file_encoding = "utf-8"
         extra = "ignore"
     

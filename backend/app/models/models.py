@@ -56,9 +56,19 @@ class Position(Base, TimestampMixin):
     market_value = Column(Float, default=0)             # 市值
     unrealized_pnl = Column(Float, default=0)           # 未实现盈亏
     unrealized_pnl_ratio = Column(Float, default=0)     # 未实现盈亏比例
+    last_buy_date = Column(String(10))                   # 最后买入日期 (YYYY-MM-DD), 用于T+1规则
     
     # 关联
     portfolio = relationship("Portfolio", back_populates="positions")
+    
+    @property
+    def can_sell(self) -> bool:
+        """是否可以卖出 (T+1规则：买入后次日才能卖出)"""
+        if not self.last_buy_date:
+            return True  # 旧数据没有记录，默认可卖
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.last_buy_date < today
 
 
 class Order(Base, TimestampMixin):
@@ -126,6 +136,40 @@ class StockData(Base, TimestampMixin):
     macd = Column(Float)
     macd_signal = Column(Float)
     macd_hist = Column(Float)
+
+
+class KlineData(Base):
+    """K线历史数据 (日线/周线/月线)"""
+    __tablename__ = "kline_data"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    period = Column(String(10), nullable=False, index=True)  # daily / weekly / monthly
+    date = Column(DateTime, nullable=False, index=True)
+    
+    open = Column(Float, nullable=False)
+    high = Column(Float, nullable=False)
+    low = Column(Float, nullable=False)
+    close = Column(Float, nullable=False)
+    volume = Column(Float, default=0)
+    amount = Column(Float, default=0)          # 成交额
+    change_pct = Column(Float, default=0)      # 涨跌幅
+    turnover_rate = Column(Float, default=0)   # 换手率
+    
+    # 技术指标
+    ma5 = Column(Float)
+    ma10 = Column(Float)
+    ma20 = Column(Float)
+    ma60 = Column(Float)
+    rsi = Column(Float)
+    macd = Column(Float)
+    macd_signal = Column(Float)
+    macd_hist = Column(Float)
+    
+    # 复合唯一索引: symbol + period + date
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
 
 
 class LLMDecision(Base, TimestampMixin):

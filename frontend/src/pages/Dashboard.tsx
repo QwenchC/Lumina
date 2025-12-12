@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { 
   Wallet, 
   TrendingUp, 
@@ -10,16 +11,37 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import StatCard from '../components/StatCard'
 import PnLChart from '../components/PnLChart'
 import PositionTable from '../components/PositionTable'
+import StockDetailModal from '../components/StockDetailModal'
 import { portfolioApi } from '../services/api'
-import type { Portfolio, PnLRecord } from '../types'
+import type { Portfolio, PnLRecord, Position } from '../types'
 
 interface DashboardProps {
   portfolioData: Portfolio | null
   pnlHistory: PnLRecord[]
 }
 
+// 将 Position 转换为 StockDetailModal 需要的 Stock 类型
+const positionToStock = (position: Position) => ({
+  symbol: position.symbol,
+  name: position.name,
+  price: position.current_price,
+  change_pct: position.unrealized_pnl_ratio * 100,
+  change: position.current_price - position.avg_cost,
+  volume: 0,
+  amount: 0,
+  turnover_rate: 0,
+  pe_ratio: 0,
+  pb_ratio: 0,
+  market_cap: 0,
+  high: position.current_price,
+  low: position.current_price,
+  open: position.avg_cost,
+  prev_close: position.avg_cost,
+})
+
 export default function Dashboard({ portfolioData, pnlHistory }: DashboardProps) {
   const queryClient = useQueryClient()
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null)
 
   // 获取订单历史
   const { data: orders } = useQuery({
@@ -123,7 +145,10 @@ export default function Dashboard({ portfolioData, pnlHistory }: DashboardProps)
       {/* 当前持仓 */}
       <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
         <h3 className="text-lg font-semibold text-white mb-4">当前持仓</h3>
-        <PositionTable positions={portfolioData.positions} />
+        <PositionTable 
+          positions={portfolioData.positions} 
+          onStockClick={(position) => setSelectedPosition(position)}
+        />
       </div>
 
       {/* 最近交易 */}
@@ -171,6 +196,14 @@ export default function Dashboard({ portfolioData, pnlHistory }: DashboardProps)
           </div>
         )}
       </div>
+
+      {/* 股票详情弹窗 */}
+      {selectedPosition && (
+        <StockDetailModal
+          stock={positionToStock(selectedPosition)}
+          onClose={() => setSelectedPosition(null)}
+        />
+      )}
     </div>
   )
 }

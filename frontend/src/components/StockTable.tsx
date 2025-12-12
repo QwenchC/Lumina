@@ -46,15 +46,6 @@ export default function StockTable({ stocks, onSelectStock }: StockTableProps) {
     return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
   })
   
-  const formatVolume = (volume: number) => {
-    if (volume >= 100000000) {
-      return (volume / 100000000).toFixed(2) + '亿'
-    } else if (volume >= 10000) {
-      return (volume / 10000).toFixed(2) + '万'
-    }
-    return volume.toString()
-  }
-  
   const formatAmount = (amount: number) => {
     // amount 单位是万元
     if (amount >= 10000) {

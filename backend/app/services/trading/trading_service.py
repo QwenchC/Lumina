@@ -85,7 +85,9 @@ class TradingService:
                     "current_price": p.current_price,
                     "market_value": p.market_value,
                     "unrealized_pnl": p.unrealized_pnl,
-                    "unrealized_pnl_ratio": p.unrealized_pnl_ratio
+                    "unrealized_pnl_ratio": p.unrealized_pnl_ratio,
+                    "last_buy_date": p.last_buy_date,  # T+1规则：最后买入日期
+                    "can_sell": p.can_sell  # T+1规则：是否可卖出
                 }
                 for p in positions
             ]
@@ -190,6 +192,10 @@ class TradingService:
         )
         position = result.scalar_one_or_none()
         
+        # 获取今天的日期 (用于T+1规则)
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        
         if position:
             # 更新现有持仓
             new_quantity = position.quantity + order.quantity
@@ -203,6 +209,7 @@ class TradingService:
             position.market_value = new_quantity * price
             position.unrealized_pnl = (price - new_avg_cost) * new_quantity
             position.unrealized_pnl_ratio = (price - new_avg_cost) / new_avg_cost
+            position.last_buy_date = today  # 更新最后买入日期 (T+1规则)
         else:
             # 检查持仓数量限制
             result = await self.db.execute(
@@ -222,7 +229,8 @@ class TradingService:
                 current_price=price,
                 market_value=order.quantity * price,
                 unrealized_pnl=0,
-                unrealized_pnl_ratio=0
+                unrealized_pnl_ratio=0,
+                last_buy_date=today  # 记录买入日期 (T+1规则)
             )
             self.db.add(position)
         
@@ -252,6 +260,12 @@ class TradingService:
         
         if not position:
             raise ValueError(f"没有 {order.symbol} 的持仓")
+        
+        # T+1规则检查：当日买入的股票不能卖出
+        if not position.can_sell:
+            raise ValueError(
+                f"T+1限制: {order.symbol} 于 {position.last_buy_date} 买入，需次日才能卖出"
+            )
         
         if position.quantity < order.quantity:
             raise ValueError(

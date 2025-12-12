@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import MarketBrowser from './pages/MarketBrowser'
+import Positions from './pages/Positions'
+import Analysis from './pages/Analysis'
+import History from './pages/History'
+import Strategy from './pages/Strategy'
+import Settings from './pages/Settings'
 import Header from './components/Header'
 import Sidebar from './components/Sidebar'
 import { useWebSocket } from './hooks/useWebSocket'
@@ -37,6 +42,11 @@ function App() {
                 } 
               />
               <Route path="/market" element={<MarketBrowser />} />
+              <Route path="/positions" element={<Positions />} />
+              <Route path="/analysis" element={<Analysis />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/strategy" element={<Strategy />} />
+              <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>
         </div>

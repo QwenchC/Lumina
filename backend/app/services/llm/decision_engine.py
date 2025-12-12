@@ -200,15 +200,22 @@ class LLMDecisionEngine:
         
         # 当前日期
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        today = datetime.now().strftime("%Y-%m-%d")
         
-        # 持仓情况
+        # 持仓情况 (包含T+1可卖出状态)
         positions_str = ""
         if portfolio.get("positions"):
-            positions_str = "\n".join([
-                f"- {p['symbol']} {p['name']}: {p['quantity']}股, 成本{p['avg_cost']:.2f}, "
-                f"现价{p['current_price']:.2f}, 盈亏{p['unrealized_pnl_ratio']*100:.2f}%"
-                for p in portfolio["positions"]
-            ])
+            position_lines = []
+            for p in portfolio["positions"]:
+                # 判断是否可卖出 (T+1规则)
+                last_buy = p.get('last_buy_date', '')
+                can_sell = (not last_buy) or (last_buy < today)
+                sell_status = "✅可卖出" if can_sell else "🔒T+1锁定"
+                position_lines.append(
+                    f"- {p['symbol']} {p['name']}: {p['quantity']}股, 成本{p['avg_cost']:.2f}, "
+                    f"现价{p['current_price']:.2f}, 盈亏{p['unrealized_pnl_ratio']*100:.2f}%, [{sell_status}]"
+                )
+            positions_str = "\n".join(position_lines)
         else:
             positions_str = "暂无持仓"
         
@@ -254,13 +261,19 @@ class LLMDecisionEngine:
 - 止损线: {settings.stop_loss_ratio * 100}%
 - 止盈线: {settings.take_profit_ratio * 100}%
 
+## 🔒 T+1交易规则（重要）
+- A股实行T+1结算制度：当日买入的股票，次日才能卖出
+- 持仓列表中标记为"🔒T+1锁定"的股票今天刚买入，不能卖出
+- 只有标记为"✅可卖出"的股票才能生成卖出建议
+- 请勿对锁定的持仓给出卖出建议
+
 ## ⚠️ 重要资金约束
 - 当前可用资金: ¥{portfolio.get('cash', 0):,.2f}
 - 所有买入建议的总金额（quantity × 当前价格）必须小于可用资金
 - 每次建议买入的金额不要超过可用资金的 {settings.max_position_ratio * 100}%
 - 如果资金不足，请减少买入数量或不建议买入
 
-请根据以上信息，给出你的分析和交易建议。注意必须确保建议的买入总金额在可用资金范围内。
+请根据以上信息，给出你的分析和交易建议。注意必须确保建议的买入总金额在可用资金范围内，且不能对T+1锁定的持仓建议卖出。
 """
         return prompt
     

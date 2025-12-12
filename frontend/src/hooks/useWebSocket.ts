@@ -10,7 +10,7 @@ export function useWebSocket() {
   const [portfolioData, setPortfolioData] = useState<Portfolio | null>(null)
   const [pnlHistory, setPnlHistory] = useState<PnLRecord[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectTimeoutRef = useRef<number>()
 
   const connect = useCallback(() => {
     try {

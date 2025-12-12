@@ -11,6 +11,8 @@ export interface Position {
   market_value: number
   unrealized_pnl: number
   unrealized_pnl_ratio: number
+  last_buy_date?: string  // T+1规则：最后买入日期
+  can_sell?: boolean      // T+1规则：是否可卖出
 }
 
 export interface Portfolio {

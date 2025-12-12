@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
 from app.core.database import async_session_factory
 from app.services.data import data_service
+from app.services.data.kline_storage import kline_storage
 from app.services.llm import llm_engine
 from app.services.trading import TradingService
 
@@ -90,6 +91,19 @@ class StrategyScheduler:
                 timezone='Asia/Shanghai'
             ),
             id='daily_summary',
+            replace_existing=True
+        )
+        
+        # 收盘后更新K线数据 (15:30)
+        self.scheduler.add_job(
+            self._update_kline_data,
+            CronTrigger(
+                day_of_week='mon-fri',
+                hour=15,
+                minute=30,
+                timezone='Asia/Shanghai'
+            ),
+            id='update_kline_data',
             replace_existing=True
         )
         
@@ -336,6 +350,133 @@ class StrategyScheduler:
                 
         except Exception as e:
             logger.error(f"每日总结失败: {e}")
+    
+    async def _update_kline_data(self):
+        """收盘后更新K线数据到数据库"""
+        logger.info("开始更新K线数据...")
+        
+        try:
+            async with async_session_factory() as db:
+                trading_service = TradingService(db)
+                
+                # 获取持仓股票
+                status = await trading_service.get_portfolio_status(self.portfolio_id)
+                positions = status.get("positions", [])
+                
+                symbols_to_update = []
+                
+                # 持仓股票
+                for pos in positions:
+                    symbols_to_update.append(pos["symbol"])
+                
+                # 添加一些常用指数和热门股票
+                common_symbols = [
+                    "000001",  # 平安银行
+                    "600519",  # 贵州茅台
+                    "000858",  # 五粮液
+                    "600036",  # 招商银行
+                    "000333",  # 美的集团
+                    "600276",  # 恒瑞医药
+                    "300750",  # 宁德时代
+                    "002594",  # 比亚迪
+                ]
+                symbols_to_update.extend(common_symbols)
+                
+                # 去重
+                symbols_to_update = list(set(symbols_to_update))
+                
+                logger.info(f"更新 {len(symbols_to_update)} 只股票的K线数据...")
+                
+                # 更新日线数据 (今天的数据)
+                today = datetime.now().strftime("%Y%m%d")
+                for symbol in symbols_to_update:
+                    try:
+                        # 获取今天的数据并保存
+                        df = await data_service.get_historical_data(
+                            symbol,
+                            start_date=today,
+                            end_date=today,
+                            period="daily",
+                            use_cache=False
+                        )
+                        if not df.empty:
+                            logger.debug(f"更新K线: {symbol} - {len(df)} 条")
+                        
+                        # 避免请求过快
+                        await asyncio.sleep(0.1)
+                        
+                    except Exception as e:
+                        logger.debug(f"更新K线失败 [{symbol}]: {e}")
+                
+                # 统计
+                stock_count = await kline_storage.get_stock_count("daily")
+                record_count = await kline_storage.get_record_count(period="daily")
+                
+                logger.info(
+                    f"K线数据更新完成: "
+                    f"共 {stock_count} 只股票, {record_count} 条日线记录"
+                )
+                
+        except Exception as e:
+            logger.error(f"更新K线数据失败: {e}")
+    
+    async def manual_update_kline(self, symbols: list = None, period: str = "daily") -> dict:
+        """
+        手动触发K线数据更新
+        
+        Args:
+            symbols: 要更新的股票代码列表，为空则更新热门股票
+            period: daily / weekly / monthly
+        
+        Returns:
+            更新结果统计
+        """
+        logger.info(f"手动更新K线数据: symbols={symbols}, period={period}")
+        
+        if not symbols:
+            # 默认更新热门股票
+            try:
+                hot_df = await data_service.get_hot_stocks(50)
+                if not hot_df.empty:
+                    symbols = hot_df["symbol"].tolist()
+                else:
+                    symbols = ["600519", "000001", "300750"]
+            except:
+                symbols = ["600519", "000001", "300750"]
+        
+        updated = 0
+        failed = 0
+        
+        for symbol in symbols:
+            try:
+                df = await data_service.get_historical_data(
+                    symbol,
+                    period=period,
+                    use_cache=False
+                )
+                if not df.empty:
+                    updated += 1
+                else:
+                    failed += 1
+                
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                logger.debug(f"更新失败 [{symbol}]: {e}")
+                failed += 1
+        
+        stock_count = await kline_storage.get_stock_count(period)
+        record_count = await kline_storage.get_record_count(period=period)
+        
+        result = {
+            "updated": updated,
+            "failed": failed,
+            "total_stocks": stock_count,
+            "total_records": record_count
+        }
+        
+        logger.info(f"手动更新K线完成: {result}")
+        return result
     
     async def manual_analysis(self) -> dict:
         """手动触发分析"""

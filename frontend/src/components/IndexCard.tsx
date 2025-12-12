@@ -14,7 +14,7 @@ interface IndexCardProps {
   data: IndexData
 }
 
-export default function IndexCard({ code, data }: IndexCardProps) {
+export default function IndexCard({ data }: IndexCardProps) {
   const isUp = data.change_pct > 0
   const isDown = data.change_pct < 0
   
@@ -25,15 +25,6 @@ export default function IndexCard({ code, data }: IndexCardProps) {
     : 'bg-slate-800 border-slate-700'
   
   const textColor = isUp ? 'text-red-400' : isDown ? 'text-green-400' : 'text-slate-400'
-  
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return (num / 10000).toFixed(2) + '万亿'
-    } else if (num >= 1) {
-      return num.toFixed(2) + '亿'
-    }
-    return num.toFixed(2)
-  }
   
   return (
     <div className={`rounded-xl p-4 border ${bgColor} hover:scale-105 transition-transform cursor-pointer`}>

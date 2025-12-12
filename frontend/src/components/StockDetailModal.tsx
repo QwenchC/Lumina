@@ -4,7 +4,9 @@ import {
   X, 
   TrendingUp, 
   TrendingDown,
-  BarChart2
+  BarChart2,
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 import api from '../services/api'
 import {
@@ -15,7 +17,8 @@ import {
   ResponsiveContainer,
   Area,
   ComposedChart,
-  Line
+  Line,
+  ReferenceLine
 } from 'recharts'
 
 interface Stock {
@@ -49,23 +52,48 @@ interface HistoryData {
   ma20?: number
 }
 
+interface MinuteData {
+  time: string
+  price: number
+  volume: number
+  total_volume: number
+  avg_price: number
+  change_pct: number
+  prev_close: number
+}
+
 interface StockDetailModalProps {
   stock: Stock
   onClose: () => void
 }
 
+type ChartType = 'minute' | 'daily' | 'weekly' | 'monthly'
+
 export default function StockDetailModal({ stock, onClose }: StockDetailModalProps) {
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [chartType, setChartType] = useState<ChartType>('minute')
   
-  // 获取历史数据
-  const { data: history, isLoading } = useQuery({
-    queryKey: ['history', stock.symbol, period],
+  // 获取分时数据
+  const { data: minuteData, isLoading: minuteLoading, refetch: refetchMinute } = useQuery({
+    queryKey: ['minute', stock.symbol],
+    queryFn: async () => {
+      const res = await api.get(`/market/minute/${stock.symbol}`)
+      return res.data as MinuteData[]
+    },
+    enabled: chartType === 'minute',
+    refetchInterval: chartType === 'minute' ? 15000 : false, // 15秒自动刷新
+  })
+  
+  // 获取历史K线数据
+  const klinePeriod = chartType === 'minute' ? 'daily' : chartType
+  const { data: history, isLoading: historyLoading } = useQuery({
+    queryKey: ['history', stock.symbol, klinePeriod],
     queryFn: async () => {
       const res = await api.get(`/market/history/${stock.symbol}`, {
-        params: { period }
+        params: { period: klinePeriod }
       })
       return res.data as HistoryData[]
     },
+    enabled: chartType !== 'minute',
   })
   
   // 按 ESC 关闭
@@ -147,113 +175,224 @@ export default function StockDetailModal({ stock, onClose }: StockDetailModalPro
             ))}
           </div>
           
-          {/* K线图 */}
+          {/* 走势图 */}
           <div className="bg-slate-800/50 rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-white flex items-center gap-2">
-                <BarChart2 className="w-5 h-5 text-sky-400" />
-                走势图
+                {chartType === 'minute' ? (
+                  <Clock className="w-5 h-5 text-sky-400" />
+                ) : (
+                  <BarChart2 className="w-5 h-5 text-sky-400" />
+                )}
+                {chartType === 'minute' ? '分时走势' : 'K线走势'}
               </h3>
-              <div className="flex gap-2">
-                {(['daily', 'weekly', 'monthly'] as const).map((p) => (
+              <div className="flex items-center gap-2">
+                {chartType === 'minute' && (
                   <button
-                    key={p}
-                    onClick={() => setPeriod(p)}
+                    onClick={() => refetchMinute()}
+                    className="p-1.5 rounded text-slate-400 hover:bg-slate-700 hover:text-sky-400"
+                    title="刷新"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                )}
+                {(['minute', 'daily', 'weekly', 'monthly'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setChartType(t)}
                     className={`px-3 py-1 rounded text-sm ${
-                      period === p
+                      chartType === t
                         ? 'bg-sky-600 text-white'
                         : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                     }`}
                   >
-                    {p === 'daily' ? '日K' : p === 'weekly' ? '周K' : '月K'}
+                    {t === 'minute' ? '分时' : t === 'daily' ? '日K' : t === 'weekly' ? '周K' : '月K'}
                   </button>
                 ))}
               </div>
             </div>
             
-            {isLoading ? (
+            {(chartType === 'minute' ? minuteLoading : historyLoading) ? (
               <div className="h-64 flex items-center justify-center">
                 <div className="animate-spin w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full"></div>
               </div>
-            ) : history && history.length > 0 ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={history.slice(-60)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="#9ca3af"
-                      fontSize={12}
-                      tickFormatter={(value) => value.slice(5)}
-                    />
-                    <YAxis 
-                      stroke="#9ca3af"
-                      fontSize={12}
-                      domain={['auto', 'auto']}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #475569',
-                        borderRadius: '8px',
-                      }}
-                      labelStyle={{ color: '#fff' }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="close"
-                      fill="#0ea5e920"
-                      stroke="#0ea5e9"
-                      strokeWidth={2}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ma5"
-                      stroke="#f59e0b"
-                      strokeWidth={1}
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ma10"
-                      stroke="#10b981"
-                      strokeWidth={1}
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="ma20"
-                      stroke="#ec4899"
-                      strokeWidth={1}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
+            ) : chartType === 'minute' ? (
+              // 分时图
+              minuteData && minuteData.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={minuteData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis 
+                        dataKey="time" 
+                        stroke="#9ca3af"
+                        fontSize={11}
+                        tickFormatter={(value: string) => {
+                          // 只显示整点和半点
+                          if (value && (value.endsWith(':00') || value.endsWith(':30'))) {
+                            return value
+                          }
+                          return ''
+                        }}
+                        interval={0}
+                      />
+                      <YAxis 
+                        stroke="#9ca3af"
+                        fontSize={11}
+                        domain={['auto', 'auto']}
+                        tickFormatter={(value: number) => value.toFixed(2)}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload as MinuteData
+                            return (
+                              <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl">
+                                <p className="text-white font-medium">{data.time}</p>
+                                <p className={`${data.change_pct >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                  价格: {data.price.toFixed(2)} ({data.change_pct >= 0 ? '+' : ''}{data.change_pct.toFixed(2)}%)
+                                </p>
+                                <p className="text-amber-400">均价: {data.avg_price.toFixed(2)}</p>
+                                <p className="text-slate-400">成交: {(data.volume / 100).toFixed(0)}手</p>
+                              </div>
+                            )
+                          }
+                          return null
+                        }}
+                      />
+                      {/* 昨收参考线 */}
+                      {minuteData[0]?.prev_close && (
+                        <ReferenceLine 
+                          y={minuteData[0].prev_close} 
+                          stroke="#6b7280" 
+                          strokeDasharray="5 5"
+                        />
+                      )}
+                      {/* 价格线 */}
+                      <Area
+                        type="monotone"
+                        dataKey="price"
+                        fill={isUp ? '#ef444420' : '#22c55e20'}
+                        stroke={isUp ? '#ef4444' : '#22c55e'}
+                        strokeWidth={1.5}
+                      />
+                      {/* 均价线 */}
+                      <Line
+                        type="monotone"
+                        dataKey="avg_price"
+                        stroke="#f59e0b"
+                        strokeWidth={1}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-slate-400">
+                  暂无分时数据（非交易时段）
+                </div>
+              )
             ) : (
-              <div className="h-64 flex items-center justify-center text-slate-400">
-                暂无历史数据
-              </div>
+              // K线图
+              history && history.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={history.slice(-60)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="#9ca3af"
+                        fontSize={12}
+                        tickFormatter={(value) => value.slice(5)}
+                      />
+                      <YAxis 
+                        stroke="#9ca3af"
+                        fontSize={12}
+                        domain={['auto', 'auto']}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1e293b',
+                          border: '1px solid #475569',
+                          borderRadius: '8px',
+                        }}
+                        labelStyle={{ color: '#fff' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="close"
+                        fill="#0ea5e920"
+                        stroke="#0ea5e9"
+                        strokeWidth={2}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="ma5"
+                        stroke="#f59e0b"
+                        strokeWidth={1}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="ma10"
+                        stroke="#10b981"
+                        strokeWidth={1}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="ma20"
+                        stroke="#ec4899"
+                        strokeWidth={1}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-slate-400">
+                  暂无历史数据
+                </div>
+              )
             )}
             
-            {/* 均线图例 */}
+            {/* 图例 */}
             <div className="flex items-center justify-center gap-6 mt-4">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-0.5 bg-sky-500"></div>
-                <span className="text-xs text-slate-400">收盘价</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-0.5 bg-amber-500"></div>
-                <span className="text-xs text-slate-400">MA5</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-0.5 bg-emerald-500"></div>
-                <span className="text-xs text-slate-400">MA10</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-0.5 bg-pink-500"></div>
-                <span className="text-xs text-slate-400">MA20</span>
-              </div>
+              {chartType === 'minute' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-4 h-0.5 ${isUp ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                    <span className="text-xs text-slate-400">价格</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-amber-500"></div>
+                    <span className="text-xs text-slate-400">均价</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-gray-500 border-dashed"></div>
+                    <span className="text-xs text-slate-400">昨收</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-sky-500"></div>
+                    <span className="text-xs text-slate-400">收盘价</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-amber-500"></div>
+                    <span className="text-xs text-slate-400">MA5</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-emerald-500"></div>
+                    <span className="text-xs text-slate-400">MA10</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 bg-pink-500"></div>
+                    <span className="text-xs text-slate-400">MA20</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
